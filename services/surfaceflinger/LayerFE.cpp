@@ -26,6 +26,7 @@
 #include "LayerFE.h"
 #include "SurfaceFlinger.h"
 #include "ui/FenceResult.h"
+#include "ui/LayerStack.h"
 
 namespace android {
 
@@ -378,6 +379,11 @@ CompositionResult LayerFE::stealCompositionResult() {
     CompositionResult result;
     std::swap(mCompositionResult, result);
     return result;
+}
+
+void LayerFE::onLayerDisplayed(ftl::SharedFuture<FenceResult> futureFenceResult,
+                               ui::LayerStack layerStack) {
+    mCompositionResult.releaseFences.emplace_back(std::move(futureFenceResult), layerStack);
 }
 
 const char* LayerFE::getDebugName() const {
