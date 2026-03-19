@@ -1547,6 +1547,7 @@ private:
     std::atomic_bool mForceFullDamage = false;
 
     bool mLayerCachingEnabled = false;
+    bool mPropagateBackpressure = false;
     bool mBackpressureGpuComposition = false;
 
     LayerTracing mLayerTracing;
