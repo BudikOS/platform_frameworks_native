@@ -1018,6 +1018,7 @@ aidl_interface {
     },
     visibility: [
         ":__subpackages__",
+        "//device/phh/treble/gsi_stubs:__subpackages__",
         "//system/tools/aidl:__subpackages__",
         "//frameworks/native/cmds/servicemanager/rpc_servicemanager",
         "//packages/modules/Virtualization:__subpackages__",
