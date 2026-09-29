@@ -4,6 +4,7 @@ package {
 
 rust_binary {
     name: "aisealhostservice",
+    enabled: false, // the virtualization stack is not built on the gsi
     srcs: ["src/main.rs"],
     edition: "2021",
     prefer_rlib: true,
