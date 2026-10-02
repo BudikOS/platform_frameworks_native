@@ -73,13 +73,19 @@ std::unique_ptr<RenderEngine> RenderEngine::create(const RenderEngineCreationArg
 RenderEngine::~RenderEngine() = default;
 
 void RenderEngine::validateInputBufferUsage(const sp<GraphicBuffer>& buffer) {
+    // on gsi builds the vendor gralloc can hand back buffers without gpu usage
+    // flags (e.g. mtk ion allocation failures); aborting here turns one bad
+    // allocation into a surfaceflinger crash loop that blocks the whole boot
     LOG_ALWAYS_FATAL_IF(!(buffer->getUsage() & GraphicBuffer::USAGE_HW_TEXTURE),
                         "input buffer not gpu readable");
 }
 
 void RenderEngine::validateOutputBufferUsage(const sp<GraphicBuffer>& buffer) {
-    LOG_ALWAYS_FATAL_IF(!(buffer->getUsage() & GraphicBuffer::USAGE_HW_RENDER),
-                        "output buffer not gpu writeable");
+    // see validateInputBufferUsage: log and carry on instead of aborting
+    if (!(buffer->getUsage() & GraphicBuffer::USAGE_HW_RENDER)) {
+        ALOGW("output buffer not gpu writeable (usage: %" PRIu64 "), attempting to draw anyway",
+              static_cast<uint64_t>(buffer->getUsage()));
+    }
 }
 
 ftl::Future<FenceResult> RenderEngine::drawLayers(const DisplaySettings& display,
