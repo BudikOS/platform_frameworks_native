@@ -35,6 +35,7 @@
 #include <cstdint>
 #include <memory>
 #include <numeric>
+#include <unistd.h>
 
 #include <common/Panopticon.h>
 #include "GLExtensions.h"
@@ -141,10 +142,38 @@ static status_t selectEGLConfig(EGLDisplay display, EGLint format, EGLint render
 
 std::unique_ptr<SkiaGLRenderEngine> SkiaGLRenderEngine::create(
         const RenderEngineCreationArgs& args) {
-    // initialize EGL for the default display
+    // initialize EGL for the default display.  the egl wrapper returns
+    // EGL_TRUE with substitute vendor/version strings even when the vendor
+    // driver fails to initialize -- the only reliable signal is the driver
+    // version staying unset (-1).  legacy sp-hal gpu stacks (e.g. qcom adreno
+    // pre-dma-buf blobs) can be briefly unavailable while the kernel driver
+    // finishes probing during early boot, so retry for a bounded period
+    // before giving up.
     EGLDisplay display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
-    if (!eglInitialize(display, nullptr, nullptr)) {
-        LOG_ALWAYS_FATAL("failed to initialize EGL");
+    EGLint major = -1;
+    EGLint minor = -1;
+    for (int attempt = 1; attempt <= 10 && major < 0; attempt++) {
+        eglInitialize(display, &major, &minor);
+        if (major >= 0) {
+            break;
+        }
+        ALOGW("vendor EGL driver failed to initialize (attempt %d, error %#x)", attempt,
+              eglGetError());
+        // the wrapper caches its half-initialized state and would never re-enter
+        // the driver without a terminate/reinitialize cycle
+        eglTerminate(display);
+        display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
+        sleep(1);
+    }
+    if (major < 0) {
+        // selecting configs on a display whose driver never came up would fail
+        // and surface as a misleading "no suitable EGLConfig found" abort.  name
+        // the real cause instead -- typically a device node access or sepolicy
+        // problem in the vendor driver's init path
+        LOG_ALWAYS_FATAL("vendor EGL driver failed to initialize after 10 attempts "
+                         "(last error %#x); surfaceflinger cannot composite without it -- "
+                         "check the driver's init path (device node access, sepolicy)",
+                         eglGetError());
     }
 
     const auto eglVersion = eglQueryString(display, EGL_VERSION);
@@ -237,11 +266,12 @@ EGLConfig SkiaGLRenderEngine::chooseEglConfig(EGLDisplay display, int format, bo
                 // this EGL is too lame for android
                 LOG_ALWAYS_FATAL("no suitable EGLConfig found, giving up"
                                  " (format: %d, vendor: %s, version: %s, extensions: %s, Client"
-                                 " API: %s)",
+                                 " API: %s, egl error: %#x)",
                                  format, eglQueryString(display, EGL_VENDOR),
                                  eglQueryString(display, EGL_VERSION),
                                  eglQueryString(display, EGL_EXTENSIONS),
-                                 eglQueryString(display, EGL_CLIENT_APIS) ?: "Not Supported");
+                                 eglQueryString(display, EGL_CLIENT_APIS) ?: "Not Supported",
+                                 eglGetError());
             }
         }
     }
